@@ -24,10 +24,11 @@ type CardMapProps = {
 };
 
 const markerIcon = L.divIcon({
-  className: "",
-  html: '<div style="width:12px;height:12px;border-radius:9999px;background:#2563eb;border:2px solid #ffffff;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  // 使用 leaflet 内置的 div-icon 类，确保有默认样式
+  className: "leaflet-div-icon",
+  html: '<div style="width:14px;height:14px;border-radius:9999px;background:#2563eb;border:2px solid #ffffff;box-shadow:0 0 6px rgba(0,0,0,0.6);"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 export function CardMap({ cards, selectedId, onSelect }: CardMapProps) {

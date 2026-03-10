@@ -83,10 +83,14 @@ export default function HomePage() {
       return null;
     }
 
-    return {
+    const loc = {
       lat: Number(data[0].lat),
       lng: Number(data[0].lon),
     };
+
+    console.log("Geocoded location for", address, "=>", loc);
+
+    return loc;
   }
 
   async function handleSubmit(e: FormEvent) {

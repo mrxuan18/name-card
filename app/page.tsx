@@ -58,13 +58,15 @@ export default function HomePage() {
   }, [cards]);
 
   async function geocode(address: string) {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+    const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&q=${encodeURIComponent(
       address
     )}&limit=1`;
 
     const res = await fetch(url, {
       headers: {
-        "Accept-Language": "zh-CN",
+        "Accept-Language": "en-US",
+        "User-Agent": "name-card-map-demo/1.0 (example@example.com)",
+        Referer: "http://localhost:3000",
       },
     });
 
@@ -166,8 +168,8 @@ export default function HomePage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                placeholder="张三"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="John Doe"
               />
             </div>
 
@@ -179,8 +181,8 @@ export default function HomePage() {
                 type="text"
                 value={form.company}
                 onChange={(e) => handleChange("company", e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                placeholder="某某科技有限公司"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="Company Inc."
               />
             </div>
           </div>
@@ -194,8 +196,8 @@ export default function HomePage() {
                 type="tel"
                 value={form.phone}
                 onChange={(e) => handleChange("phone", e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                placeholder="138xxxx0000"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="+1 (555) 000-0000"
               />
             </div>
 
@@ -207,7 +209,7 @@ export default function HomePage() {
                 type="email"
                 value={form.email}
                 onChange={(e) => handleChange("email", e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 placeholder="name@example.com"
               />
             </div>
@@ -221,8 +223,8 @@ export default function HomePage() {
               type="text"
               value={form.address}
               onChange={(e) => handleChange("address", e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              placeholder="如：上海市黄浦区南京东路 xx 号"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              placeholder="如：280 Bowery, New York, NY 10012"
             />
           </div>
 
@@ -234,7 +236,7 @@ export default function HomePage() {
               value={form.notes}
               onChange={(e) => handleChange("notes", e.target.value)}
               rows={3}
-              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               placeholder="可以记录见面场景、合作意向等"
             />
           </div>

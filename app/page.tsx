@@ -56,6 +56,30 @@ export default function HomePage() {
     } catch (e) {
       console.error("Failed to save cards to localStorage", e);
     }
+
+    // 同步一份到服务端，写入项目根目录的 cards.csv
+    if (cards.length > 0) {
+      fetch("/api/cards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ cards }),
+      }).catch((err) => {
+        console.error("Failed to sync cards.csv", err);
+      });
+    } else {
+      // 没有名片时也同步一次，清空 CSV
+      fetch("/api/cards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ cards: [] }),
+      }).catch((err) => {
+        console.error("Failed to sync empty cards.csv", err);
+      });
+    }
   }, [cards]);
 
   async function geocode(address: string) {

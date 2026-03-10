@@ -1,65 +1,330 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import dynamic from "next/dynamic";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { CardWithLocation } from "./components/CardMap";
+
+const DynamicCardMap = dynamic(
+  () => import("./components/CardMap").then((m) => m.CardMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-slate-500">
+        正在加载地图…
+      </div>
+    ),
+  }
+);
+
+type CardFormValues = Omit<CardWithLocation, "id" | "lat" | "lng">;
+
+const STORAGE_KEY = "business-card-map";
+
+export default function HomePage() {
+  const [cards, setCards] = useState<CardWithLocation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [form, setForm] = useState<CardFormValues>({
+    name: "",
+    company: "",
+    phone: "",
+    email: "",
+    address: "",
+    notes: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as CardWithLocation[];
+      if (Array.isArray(parsed)) {
+        setCards(parsed);
+      }
+    } catch (e) {
+      console.error("Failed to load cards from localStorage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+    } catch (e) {
+      console.error("Failed to save cards to localStorage", e);
+    }
+  }, [cards]);
+
+  async function geocode(address: string) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      address
+    )}&limit=1`;
+
+    const res = await fetch(url, {
+      headers: {
+        "Accept-Language": "zh-CN",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error("Geocoding request failed");
+    }
+
+    const data = (await res.json()) as Array<{
+      lat: string;
+      lon: string;
+    }>;
+
+    if (!data.length) {
+      return null;
+    }
+
+    return {
+      lat: Number(data[0].lat),
+      lng: Number(data[0].lon),
+    };
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!form.name.trim() || !form.address.trim()) {
+      setError("请至少填写姓名和地址");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const loc = await geocode(form.address);
+      if (!loc) {
+        setError("未找到该地址的坐标，请检查地址是否正确");
+        return;
+      }
+
+      const newCard: CardWithLocation = {
+        id: String(Date.now()),
+        ...form,
+        lat: loc.lat,
+        lng: loc.lng,
+      };
+
+      setCards((prev) => [newCard, ...prev]);
+      setSelectedId(newCard.id);
+      setForm({
+        name: "",
+        company: "",
+        phone: "",
+        email: "",
+        address: "",
+        notes: "",
+      });
+    } catch (err) {
+      console.error(err);
+      setError("地理编码失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleChange<K extends keyof CardFormValues>(
+    key: K,
+    value: CardFormValues[K]
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
+  const selectedCard = useMemo(
+    () => cards.find((c) => c.id === selectedId) ?? null,
+    [cards, selectedId]
+  );
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <section className="w-full border-b bg-white p-4 lg:h-screen lg:w-[420px] lg:max-w-md lg:border-b-0 lg:border-r lg:p-6 xl:w-[460px]">
+        <div className="mb-4">
+          <h1 className="text-xl font-semibold tracking-tight">
+            名片地图工具
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-1 text-xs text-slate-500">
+            填写名片信息，自动把地址转成坐标，在右侧地图上显示标记。
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                姓名 *
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => handleChange("name", e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="张三"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                公司
+              </label>
+              <input
+                type="text"
+                value={form.company}
+                onChange={(e) => handleChange("company", e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="某某科技有限公司"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                手机
+              </label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => handleChange("phone", e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="138xxxx0000"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                邮箱
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => handleChange("email", e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="name@example.com"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              地址 *（用于地理编码）
+            </label>
+            <input
+              type="text"
+              value={form.address}
+              onChange={(e) => handleChange("address", e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              placeholder="如：上海市黄浦区南京东路 xx 号"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              备注
+            </label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => handleChange("notes", e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              placeholder="可以记录见面场景、合作意向等"
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-600" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-9 items-center justify-center rounded-md bg-sky-600 px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Documentation
-          </a>
+            {loading ? "正在地理编码…" : "添加到地图"}
+          </button>
+        </form>
+
+        <div className="mt-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-slate-800">名片列表</h2>
+            <span className="text-xs text-slate-500">
+              共 {cards.length} 条
+            </span>
+          </div>
+
+          {cards.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              还没有名片。先在上方表单中添加一条吧。
+            </p>
+          ) : (
+            <div className="max-h-[260px] space-y-2 overflow-y-auto pr-1">
+              {cards.map((card) => {
+                const isSelected = card.id === selectedId;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedId(card.id)}
+                    className={`w-full rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                      isSelected
+                        ? "border-sky-500 bg-sky-50"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">
+                        {card.name}
+                        {card.company && (
+                          <span className="ml-1 text-[11px] text-slate-600">
+                            @{card.company}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {card.phone || card.email || ""}
+                      </span>
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-slate-600">
+                      {card.address}
+                    </div>
+                    {card.notes && (
+                      <div className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                        {card.notes}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedCard && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              当前选中：{selectedCard.name}（地图上会高亮并弹出信息框）
+            </p>
+          )}
         </div>
-      </main>
+      </section>
+
+      <section className="flex-1">
+        <div className="h-[360px] border-t bg-slate-100 lg:h-screen lg:border-t-0">
+          <DynamicCardMap
+            cards={cards}
+            selectedId={selectedId}
+            onSelect={(id) => setSelectedId(id)}
+          />
+        </div>
+      </section>
     </div>
   );
 }

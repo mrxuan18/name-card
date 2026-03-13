@@ -12,6 +12,7 @@ type CardPayload = {
   notes: string;
   lat: number;
   lng: number;
+  images?: string[];
 };
 
 function toCsv(cards: CardPayload[]): string {
@@ -25,6 +26,7 @@ function toCsv(cards: CardPayload[]): string {
     "notes",
     "lat",
     "lng",
+    "images",
   ];
 
   const rows = cards.map((c) =>
@@ -38,6 +40,7 @@ function toCsv(cards: CardPayload[]): string {
       c.notes,
       String(c.lat),
       String(c.lng),
+      (Array.isArray(c.images) ? c.images : []).join(";"),
     ].map((value) => {
       const safe = value ?? "";
       if (safe.includes(",") || safe.includes('"') || safe.includes("\n")) {

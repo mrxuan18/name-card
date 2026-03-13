@@ -15,10 +15,20 @@ export type CardWithLocation = {
   notes: string;
   lat: number;
   lng: number;
+  images?: string[];
+};
+
+export type ProspectMarker = {
+  id: string;
+  storeName: string;
+  address: string;
+  lat: number;
+  lng: number;
 };
 
 type CardMapProps = {
   cards: CardWithLocation[];
+  prospects?: ProspectMarker[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
 };
@@ -31,15 +41,25 @@ const markerIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
-export function CardMap({ cards, selectedId, onSelect }: CardMapProps) {
+const prospectIcon = L.divIcon({
+  className: "leaflet-div-icon",
+  html: '<div style="width:14px;height:14px;border-radius:9999px;background:#dc2626;border:2px solid #ffffff;box-shadow:0 0 6px rgba(0,0,0,0.6);"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+export function CardMap({ cards, prospects = [], selectedId, onSelect }: CardMapProps) {
   const center = useMemo<[number, number]>(() => {
     if (cards.length > 0) {
       return [cards[0].lat, cards[0].lng];
     }
+    if (prospects.length > 0) {
+      return [prospects[0].lat, prospects[0].lng];
+    }
     return [31.2304, 121.4737];
-  }, [cards]);
+  }, [cards, prospects]);
 
-  const zoom = cards.length > 0 ? 13 : 4;
+  const zoom = cards.length > 0 || prospects.length > 0 ? 13 : 4;
 
   return (
     <MapContainer
@@ -73,6 +93,27 @@ export function CardMap({ cards, selectedId, onSelect }: CardMapProps) {
               )}
               {selectedId === card.id && (
                 <div className="mt-1 text-[10px] text-sky-600">当前选中</div>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+
+      {prospects.map((p) => (
+        <Marker
+          key={`p-${p.id}`}
+          position={[p.lat, p.lng]}
+          icon={prospectIcon}
+          eventHandlers={{
+            click: () => onSelect?.(p.id),
+          }}
+        >
+          <Popup>
+            <div className="space-y-1 text-sm">
+              <div className="font-semibold text-red-700">{p.storeName}</div>
+              <div className="text-xs text-slate-600">{p.address}</div>
+              {selectedId === p.id && (
+                <div className="mt-1 text-[10px] text-red-600">待拜访（选中）</div>
               )}
             </div>
           </Popup>

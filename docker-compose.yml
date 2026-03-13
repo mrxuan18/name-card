@@ -1,0 +1,32 @@
+services:
+  web:
+    build: .
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - UPLOADS_DIR=/data/uploads
+    volumes:
+      - /opt/name-card-uploads:/data/uploads
+      - /opt/name-card-cards.csv:/app/cards.csv
+      - /opt/name-card-prospects.csv:/app/prospects.csv
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
+  caddy_config:
+

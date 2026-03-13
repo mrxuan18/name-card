@@ -11,6 +11,14 @@ function safeExt(filename: string) {
   return "";
 }
 
+function getUploadsBaseDir() {
+  const fromEnv = process.env.UPLOADS_DIR;
+  if (fromEnv && fromEnv.trim().length > 0) {
+    return fromEnv;
+  }
+  return path.join(process.cwd(), "uploads");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -25,7 +33,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "No files" }, { status: 400 });
     }
 
-    const destDir = path.join(process.cwd(), "public", "uploads", cardId);
+    const baseDir = getUploadsBaseDir();
+    const destDir = path.join(baseDir, cardId);
     await fs.mkdir(destDir, { recursive: true });
 
     const uploaded: Array<{ url: string; filename: string; originalName: string }> = [];
@@ -74,7 +83,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid filename" }, { status: 400 });
     }
 
-    const filePath = path.join(process.cwd(), "public", "uploads", cardId, filename);
+    const baseDir = getUploadsBaseDir();
+    const filePath = path.join(baseDir, cardId, filename);
     await fs.unlink(filePath);
 
     return NextResponse.json({ ok: true });

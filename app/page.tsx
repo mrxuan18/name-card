@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { CardWithLocation } from "./components/CardMap";
+import type { CardWithLocation, ProspectMarker } from "./components/CardMap";
 
 const DynamicCardMap = dynamic(
   () => import("./components/CardMap").then((m) => m.CardMap),
@@ -19,11 +19,17 @@ const DynamicCardMap = dynamic(
 type CardFormValues = Omit<CardWithLocation, "id" | "lat" | "lng">;
 
 const STORAGE_KEY = "business-card-map";
+const PROSPECTS_KEY = "prospect-markers";
 
 export default function HomePage() {
   const [cards, setCards] = useState<CardWithLocation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [prospects, setProspects] = useState<ProspectMarker[]>([]);
+  const [prospectForm, setProspectForm] = useState<{
+    storeName: string;
+    address: string;
+  }>({ storeName: "", address: "" });
   const [form, setForm] = useState<CardFormValues>({
     name: "",
     company: "",
@@ -34,6 +40,27 @@ export default function HomePage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewUrl(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!previewUrl) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [previewUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -46,6 +73,15 @@ export default function HomePage() {
       }
     } catch (e) {
       console.error("Failed to load cards from localStorage", e);
+    }
+
+    try {
+      const raw = window.localStorage.getItem(PROSPECTS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ProspectMarker[];
+      if (Array.isArray(parsed)) setProspects(parsed);
+    } catch (e) {
+      console.error("Failed to load prospects from localStorage", e);
     }
   }, []);
 
@@ -81,6 +117,21 @@ export default function HomePage() {
       });
     }
   }, [cards]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(PROSPECTS_KEY, JSON.stringify(prospects));
+    } catch (e) {
+      console.error("Failed to save prospects to localStorage", e);
+    }
+
+    fetch("/api/prospects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prospects }),
+    }).catch((err) => console.error("Failed to sync prospects.csv", err));
+  }, [prospects]);
 
   async function geocode(address: string) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&q=${encodeURIComponent(
@@ -178,6 +229,11 @@ export default function HomePage() {
     setEditingId((prev) => (prev === id ? null : prev));
   }
 
+  function deleteProspect(id: string) {
+    setProspects((prev) => prev.filter((p) => p.id !== id));
+    setSelectedId((prev) => (prev === id ? null : prev));
+  }
+
   function startEdit(id: string) {
     const target = cards.find((c) => c.id === id);
     if (!target) return;
@@ -203,6 +259,96 @@ export default function HomePage() {
       address: "",
       notes: "",
     });
+  }
+
+  async function handleUploadImages(cardId: string, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      for (const f of Array.from(files)) {
+        formData.append("files", f);
+      }
+
+      const res = await fetch(`/api/upload?cardId=${encodeURIComponent(cardId)}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const data = (await res.json()) as {
+        ok: boolean;
+        uploaded?: Array<{ url: string }>;
+      };
+      const urls = (data.uploaded ?? []).map((u) => u.url).filter(Boolean);
+
+      if (urls.length > 0) {
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === cardId ? { ...c, images: [...(c.images ?? []), ...urls] } : c
+          )
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      alert("图片上传失败，请稍后重试。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDeleteImage(cardId: string, url: string) {
+    const filename = url.split("/").pop() ?? "";
+    if (!filename) return;
+
+    try {
+      const res = await fetch(
+        `/api/upload?cardId=${encodeURIComponent(cardId)}&filename=${encodeURIComponent(
+          filename
+        )}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Delete failed");
+
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === cardId
+            ? { ...c, images: (c.images ?? []).filter((u) => u !== url) }
+            : c
+        )
+      );
+    } catch (e) {
+      console.error(e);
+      alert("删除图片失败，请稍后重试。");
+    }
+  }
+
+  async function submitProspect(e: FormEvent) {
+    e.preventDefault();
+    if (!prospectForm.storeName.trim() || !prospectForm.address.trim()) {
+      alert("请填写商店名字和地址。");
+      return;
+    }
+    try {
+      const loc = await geocode(prospectForm.address);
+      if (!loc) {
+        alert("未找到该地址的坐标，请检查地址是否正确。");
+        return;
+      }
+      const item: ProspectMarker = {
+        id: `p-${Date.now()}`,
+        storeName: prospectForm.storeName.trim(),
+        address: prospectForm.address.trim(),
+        lat: loc.lat,
+        lng: loc.lng,
+      };
+      setProspects((prev) => [item, ...prev]);
+      setSelectedId(item.id);
+      setProspectForm({ storeName: "", address: "" });
+    } catch (err) {
+      console.error(err);
+      alert("地理编码失败，请稍后重试。");
+    }
   }
 
   function exportToCsv() {
@@ -276,6 +422,34 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/70 p-4 overscroll-contain"
+          onClick={() => setPreviewUrl(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-5xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewUrl(null)}
+              className="absolute -right-2 -top-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-lg font-bold text-slate-800 shadow hover:bg-slate-50"
+              title="关闭 (Esc)"
+            >
+              ×
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt="preview"
+              className="max-h-[90vh] w-full rounded-lg bg-white object-contain"
+            />
+          </div>
+        </div>
+      )}
       <section className="w-full border-b bg-white p-4 lg:h-screen lg:w-[420px] lg:max-w-md lg:border-b-0 lg:border-r lg:p-6 xl:w-[460px]">
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight">
@@ -399,6 +573,125 @@ export default function HomePage() {
           </div>
         </form>
 
+        <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-slate-800">附加图片</h3>
+            {selectedCard && (
+              <span className="text-[11px] text-slate-500">
+                {selectedCard.images?.length ?? 0} 张
+              </span>
+            )}
+          </div>
+
+          {!selectedCard ? (
+            <p className="mt-1 text-[11px] text-slate-500">
+              先在下方列表选择一张名片，再上传图片。
+            </p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={uploading}
+                onChange={(e) => {
+                  void handleUploadImages(selectedCard.id, e.target.files);
+                  e.currentTarget.value = "";
+                }}
+                className="block w-full text-[11px] text-slate-700 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-white file:px-3 file:py-1 file:text-[11px] file:font-medium file:text-slate-700 hover:file:bg-slate-50 disabled:opacity-60"
+              />
+              {uploading && (
+                <div className="text-[11px] text-slate-500">正在上传…</div>
+              )}
+              {(selectedCard.images?.length ?? 0) > 0 && (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {selectedCard.images!.map((url) => (
+                    <div key={url} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteImage(selectedCard.id, url)}
+                        className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] font-bold text-white hover:bg-black/70"
+                        title="删除图片"
+                      >
+                        ×
+                      </button>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt="attachment"
+                        onClick={() => setPreviewUrl(url)}
+                        className="h-16 w-full rounded-md border border-slate-200 object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-red-800">待拜访标记（红色）</h3>
+            <span className="text-[11px] text-red-700">{prospects.length} 个</span>
+          </div>
+          <form onSubmit={submitProspect} className="mt-2 space-y-2">
+            <input
+              type="text"
+              value={prospectForm.storeName}
+              onChange={(e) =>
+                setProspectForm((p) => ({ ...p, storeName: e.target.value }))
+              }
+              className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+              placeholder="商店名字（如：ABC Restaurant Supplies）"
+            />
+            <input
+              type="text"
+              value={prospectForm.address}
+              onChange={(e) =>
+                setProspectForm((p) => ({ ...p, address: e.target.value }))
+              }
+              className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+              placeholder="地址（美国）"
+            />
+            <button
+              type="submit"
+              className="inline-flex h-8 items-center justify-center rounded-md bg-red-600 px-3 text-xs font-medium text-white shadow-sm hover:bg-red-700"
+            >
+              添加红色标记
+            </button>
+          </form>
+
+          {prospects.length > 0 && (
+            <div className="mt-3 max-h-[160px] space-y-2 overflow-y-auto pr-1">
+              {prospects.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-xs"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(p.id)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="font-medium text-slate-900">{p.storeName}</div>
+                    <div className="mt-1 truncate text-[11px] text-slate-600">
+                      {p.address}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteProspect(p.id)}
+                    className="inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-100"
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="mt-6">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -492,6 +785,7 @@ export default function HomePage() {
         <div className="h-[360px] border-t bg-slate-100 lg:h-screen lg:border-t-0">
           <DynamicCardMap
             cards={cards}
+            prospects={prospects}
             selectedId={selectedId}
             onSelect={(id) => setSelectedId(id)}
           />
